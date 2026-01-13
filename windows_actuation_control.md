@@ -1317,7 +1317,7 @@ This Windows Actuation Control tool was built from scratch to enable reliable re
 
 Every feature, every delay, and every line of code was iteratively tested and refined for maximum reliability. The combination of Python CLI, AutoHotkey watchers, and Task Scheduler auto-start creates a seamless automation experience.
 
-If you find this tool useful, encounter bugs, or have feature requests, feel free to reach out directly via [X (formerly Twitter)](https://x.com/mastermonk12).
+If you find this tool useful, encounter bugs, or have feature requests, feel free to reach out directly via [X (formerly Twitter)](https://x.com/nullvoider07).
 
 ---
 
