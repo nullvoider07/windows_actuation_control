@@ -1,0 +1,179 @@
+name: Release Windows Actuation Control
+
+on:
+  push:
+    tags:
+      - 'win-v*'
+
+permissions:
+  contents: write
+
+jobs:
+# ------------------------------------------------------------------
+  # JOB 1: LINUX BUILD (x64)
+  # Produces: .tar.gz, .deb, .rpm
+  # ------------------------------------------------------------------
+  build-linux-x64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with: { python-version: '3.13' }
+      - run: pip install pyinstaller paramiko
+
+      # 1. Build the Binary
+      - name: Build Binary
+        run: pyinstaller --onefile --name windows-actuation windows_actuation_control.py
+
+      # 2. Prepare Version Number
+      - name: Get Version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#win-v}" >> $GITHUB_OUTPUT
+
+      # 3. Create TAR.GZ Archive
+      - name: Create Tarball
+        run: |
+          tar -czvf windows-actuation-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz -C dist windows-actuation
+
+      # 4. Install Packaging Tools
+      - name: Install FPM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rubygems build-essential rpm
+          sudo gem install --no-document fpm
+
+      # 5. Create DEB Package
+      - name: Create DEB
+        run: |
+          mkdir -p pkg-root/usr/local/bin
+          cp dist/windows-actuation pkg-root/usr/local/bin/
+          
+          fpm -s dir -t deb \
+            -n windows-actuation \
+            -v ${{ steps.version.outputs.VERSION }} \
+            --architecture amd64 \
+            --description "windows Actuation Controller CLI" \
+            -C pkg-root \
+            -p windows-actuation-${{ steps.version.outputs.VERSION }}-linux-x64.deb \
+            . 
+
+      # 6. Create RPM Package
+      - name: Create RPM
+        run: |
+          fpm -s dir -t rpm \
+            -n windows-actuation \
+            -v ${{ steps.version.outputs.VERSION }} \
+            --architecture x86_64 \
+            --description "windows Actuation Controller CLI" \
+            -C pkg-root \
+            -p windows-actuation-${{ steps.version.outputs.VERSION }}-linux-x64.rpm \
+            .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-assets
+          path: |
+            *.tar.gz
+            *.deb
+            *.rpm
+
+  # ------------------------------------------------------------------
+  # JOB 2: MACOS MATRIX BUILD (Intel & Apple Silicon)
+  # Produces: .tar.gz, .pkg
+  # ------------------------------------------------------------------
+  build-macos:
+    name: build-macos-${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-15
+            arch: x64 
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with: { python-version: '3.13' }
+      - run: pip install pyinstaller paramiko
+
+      # FIXED FILENAME HERE
+      - name: Build Binary
+        run: pyinstaller --onefile --name windows-actuation windows_actuation_control.py
+
+      - name: Get Version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#win-v}" >> $GITHUB_OUTPUT
+
+      - name: Create Tarball
+        run: |
+          tar -czvf windows-actuation-${{ steps.version.outputs.VERSION }}-osx-${{ matrix.arch }}.tar.gz -C dist windows-actuation
+
+      - name: Create PKG Installer
+        run: |
+          mkdir -p pkg-root/usr/local/bin
+          cp dist/windows-actuation pkg-root/usr/local/bin/
+          
+          pkgbuild --root pkg-root \
+            --identifier com.github.windows-actuation \
+            --version ${{ steps.version.outputs.VERSION }} \
+            --install-location / \
+            windows-actuation-${{ steps.version.outputs.VERSION }}-osx-${{ matrix.arch }}.pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-assets-${{ matrix.arch }}
+          path: |
+            *.tar.gz
+            *.pkg
+
+  # ------------------------------------------------------------------
+  # JOB 3: WINDOWS BUILD (x64)
+  # Produces: .zip
+  # ------------------------------------------------------------------
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with: { python-version: '3.13' }
+      - run: pip install pyinstaller paramiko
+
+      # FIXED FILENAME HERE
+      - name: Build Binary
+        run: pyinstaller --onefile --name windows-actuation.exe windows_actuation_control.py
+      
+      - name: Get Version
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF_NAME#win-v}" >> $GITHUB_OUTPUT
+
+      - name: Create Zip Archive
+        run: |
+          Compress-Archive -Path dist/windows-actuation.exe -DestinationPath windows-actuation-${{ steps.version.outputs.VERSION }}-win-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-assets
+          path: |
+            *.zip
+
+  # ------------------------------------------------------------------
+  # JOB 4: RELEASE
+  # ------------------------------------------------------------------
+  release:
+    needs: [build-linux-x64, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/download-artifact@v4
+        with:
+          path: ./assets
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ./assets/*
