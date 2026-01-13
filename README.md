@@ -349,7 +349,7 @@ pip install paramiko
 **Option A: One-Line Installer (Recommended)**
 This automatically detects your OS, downloads the latest binary, and adds it to your PATH.
 
-* **Linux & Windows:**
+* **Linux & macOS:**
     ```bash
     curl -fsSL https://raw.githubusercontent.com/nullvoider07/windows_actuation_control/main/install/install.sh | bash
     ```
