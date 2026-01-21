@@ -5,6 +5,20 @@ REPO="nullvoider07/windows_actuation_control"
 BINARY_NAME="windows-actuation"
 INSTALL_DIR="$HOME/.local/bin"
 
+if command -v "$BINARY_NAME" &> /dev/null; then
+    echo "⚠️  windows-actuation is already installed."
+    echo "💡 To update to the latest version, simply run:"
+    echo "   $BINARY_NAME update"
+    echo ""
+    read -p "Do you still want to force a reinstall? [y/N] " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Installation cancelled."
+        exit 0
+    fi
+    echo "Proceeding with reinstall..."
+fi
+
 # Detect OS
 OS="$(uname -s)"
 case "${OS}" in
@@ -33,7 +47,7 @@ if [ -z "$LATEST_TAG" ]; then
     exit 1
 fi
 
-# Extract Version Number (Remove 'win-v' prefix)
+# Extract Version Number
 VERSION=${LATEST_TAG#win-v}
 echo "Latest Version: ${VERSION}"
 

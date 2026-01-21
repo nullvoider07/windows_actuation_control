@@ -7,10 +7,23 @@ Intelligent middleware for CUA to control Windows VM mouse and keyboard
 import sys
 import re
 import time
+import os
+import threading
+import requests
+import platform
+import shutil
+import tempfile
+import stat
+import json
+import zipfile
 import paramiko
 import getpass
+from pathlib import Path
 from typing import Optional, Tuple
 
+# Version and Repository Info
+__version__ = "1.0.0"
+REPO = "nullvoider07/windows_actuation_control"
 
 class VMController:
     """Smart CLI tool for controlling Windows VM via SSH"""
@@ -42,7 +55,8 @@ class VMController:
         self.port = port
         self.ssh_client: Optional[paramiko.SSHClient] = None
         self.connected = False
-        
+
+    # Establish SSH connection    
     def connect(self, password: str) -> bool:
         """Establish persistent SSH connection"""
         try:
@@ -73,6 +87,7 @@ class VMController:
             print(f"[✗] Connection failed: {e}")
             return False
     
+    # Close SSH connection
     def disconnect(self):
         """Close SSH connection"""
         if self.ssh_client:
@@ -80,6 +95,27 @@ class VMController:
             self.connected = False
             print("[*] Disconnected from VM")
     
+    # Monitor connection health
+    def _monitor_connection(self):
+        """Background thread to monitor SSH connection health"""
+        while self.connected:
+            try:
+                if self.ssh_client:
+                    transport = self.ssh_client.get_transport()
+                    if transport is None or not transport.is_active():
+                        raise Exception("Transport closed")    
+                    transport.send_ignore()
+                time.sleep(3)
+                
+            except Exception:
+                if self.connected:
+                    print("\n\n[!] Connection to VM lost unexpectedly.")
+                    print("[*] Shutting down...")
+                    self.connected = False
+                    os._exit(1)
+                break
+    
+    # Smart command type detection
     def detect_command_type(self, command: str) -> Tuple[str, str]:
         """
         Smart detection of command type (mouse/keyboard)
@@ -133,9 +169,10 @@ class VMController:
         # Default: assume it's text to type
         return 'keyboard', f"type {command}"
     
+    # Execute command on VM
     def execute_command(self, command: str) -> bool:
         """Execute command on VM"""
-        if not self.connected:
+        if not self.connected or self.ssh_client is None:
             print("[✗] Not connected to VM")
             return False
         
@@ -189,6 +226,7 @@ class VMController:
             print(f"[✗] Execution failed: {e}")
             return False
     
+    # Batch mode execution
     def batch_mode(self, commands: list, delay: float = 0.1):
         """Execute a batch of commands with optional delays"""
         print(f"\n[*] Batch mode: Executing {len(commands)} commands...")
@@ -205,6 +243,7 @@ class VMController:
         
         print("\n[✓] Batch execution complete!")
     
+    # Interactive mode
     def interactive_mode(self):
         """Interactive command loop"""
         print("\n" + "="*60)
@@ -218,6 +257,9 @@ class VMController:
         print("  Special:  help              (show this help)")
         print("="*60 + "\n")
         
+        monitor_thread = threading.Thread(target=self._monitor_connection, daemon=True)
+        monitor_thread.start()
+
         while self.connected:
             try:
                 user_input = input("VM> ").strip()
@@ -245,6 +287,7 @@ class VMController:
         
         self.disconnect()
     
+    # Show help information
     def show_help(self):
         """Display help information"""
         help_text = """
@@ -286,10 +329,127 @@ class VMController:
         """
         print(help_text)
 
+# Show version information
+def show_version():
+    """Show version information"""
+    print(f"Windows Actuation Control v{__version__}")
+    print(f"Platform: {platform.system()} {platform.machine()}")
 
+# Update mechanism
+def update_tool(check_only: bool = False):
+    """Check for updates and install the latest version"""
+    print("[*] Checking for updates...")
+    print(f"    Current version: v{__version__}")
+    
+    try:
+        # 1. Get latest release from GitHub
+        release_url = f"https://api.github.com/repos/{REPO}/releases/latest"
+        response = requests.get(release_url, timeout=10)
+        response.raise_for_status()
+        
+        latest_release = response.json()
+        latest_tag = latest_release['tag_name']
+        
+        # Handle 'win-v', 'v', or just number prefixes
+        cleaned_tag = latest_tag.replace('win-', '') # Adjust prefix if you use one like 'win-v1.0'
+        latest_version = cleaned_tag.lstrip('v')
+        
+        print(f"    Latest version:  v{latest_version}")
+        
+        if latest_version == __version__:
+            print("[✓] You already have the latest version!")
+            return
+        
+        print(f"\n[!] New version available: v{latest_version}")
+        
+        if check_only:
+            print("    Run 'windows-actuation update' to install.")
+            return
+
+        confirm = input("\nDo you want to update now? [y/N] ").strip().lower()
+        if confirm != 'y':
+            print("[*] Update cancelled.")
+            return
+
+        # Construct filename (Assumes standard Windows asset naming)
+        # e.g., windows-actuation-1.0.0-win-x64.zip
+        arch = 'x64' if platform.machine().endswith('64') else 'x86'
+        file_name = f"windows-actuation-{latest_version}-win-{arch}.zip"
+        
+        download_url = f"https://github.com/{REPO}/releases/download/{latest_tag}/{file_name}"
+        print(f"\n[*] Downloading {file_name}...")
+
+        # Download
+        download_response = requests.get(download_url, stream=True, timeout=30)
+        download_response.raise_for_status()
+        
+        temp_dir = tempfile.mkdtemp()
+        temp_file = os.path.join(temp_dir, file_name)
+        
+        with open(temp_file, 'wb') as f:
+            for chunk in download_response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                
+        # Extract
+        print("[*] Installing update...")
+        with zipfile.ZipFile(temp_file, 'r') as zf:
+            zf.extractall(temp_dir)
+
+        # Replace Binary
+        binary_name = 'windows-actuation.exe'
+        extracted_bin = os.path.join(temp_dir, binary_name)
+        
+        if not os.path.exists(extracted_bin):
+            # Check subfolders
+            found = list(Path(temp_dir).rglob(binary_name))
+            if found:
+                extracted_bin = str(found[0])
+            else:
+                print(f"[✗] Error: Could not find '{binary_name}' in archive.")
+                shutil.rmtree(temp_dir)
+                return
+
+        current_exe = sys.executable if getattr(sys, 'frozen', False) else __file__
+        current_exe_path = Path(current_exe).resolve()
+
+        try:
+            # Windows requires renaming the running executable before replacement
+            old_exe = current_exe_path.with_suffix('.old')
+            if old_exe.exists():
+                try: os.remove(old_exe)
+                except: pass
+            
+            os.rename(current_exe_path, old_exe)
+            shutil.copy2(extracted_bin, current_exe_path)
+            
+            print(f"\n[✓] Successfully updated to v{latest_version}!")
+            print("[*] Please restart the tool.")
+            
+        except OSError as e:
+            print(f"[✗] OS Error: {e}")
+            print("[!] On Windows, you may need to close the tool manually to complete the update.")
+        except Exception as e:
+            print(f"[✗] Failed to replace binary: {e}")
+                
+        finally:
+            shutil.rmtree(temp_dir)
+
+    except Exception as e:
+        print(f"[✗] Update failed: {e}")
+
+# Main entry point
 def main():
     """Main entry point"""
     import argparse
+
+    if len(sys.argv) > 1:
+        if sys.argv[1] == 'version':
+            show_version()
+            sys.exit(0)
+        elif sys.argv[1] == 'update':
+            check_only = '--check-only' in sys.argv
+            update_tool(check_only=check_only)
+            sys.exit(0)
     
     parser = argparse.ArgumentParser(description='Windows VM Control CLI')
     parser.add_argument('-f', '--file', help='Execute commands from file (batch mode)')
@@ -326,7 +486,7 @@ def main():
     # Enter interactive mode
     controller.interactive_mode()
 
-
+# Main entry point
 if __name__ == "__main__":
     try:
         main()
