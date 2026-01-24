@@ -16,6 +16,7 @@ import tempfile
 import stat
 import json
 import zipfile
+import subprocess
 import paramiko
 import getpass
 from pathlib import Path
@@ -291,49 +292,53 @@ class VMController:
     def show_help(self):
         """Display help information"""
         help_text = """
-╔════════════════════════════════════════════════════════════╗
-║                   COMMAND REFERENCE                        ║
-╠════════════════════════════════════════════════════════════╣
-║ MOUSE COMMANDS                                             ║
-╠════════════════════════════════════════════════════════════╣
-║ <x> <y> move           → Move cursor to coordinates        ║
-║ <x> <y> left           → Move and left-click               ║
-║ <x> <y> right          → Move and right-click              ║
-║ <x> <y> double         → Move and double-click             ║
-║ <x> <y> middle         → Move and middle-click             ║
-║ <x> <y> scroll_up [n]  → Move and scroll up                ║
-║ <x> <y> scroll_down [n]→ Move and scroll down              ║
-║ <x> <y> drag <x2> <y2> → Drag from (x,y) to (x2,y2)        ║
-║ here <action>          → Action at current position        ║
-╠════════════════════════════════════════════════════════════╣
-║ KEYBOARD COMMANDS                                          ║
-╠════════════════════════════════════════════════════════════╣
-║ type <text>            → Type literal text                 ║
-║ press <keys>           → Press keys/shortcuts              ║
-║ {Enter}                → Press Enter (auto-detected)       ║
-║ ^c                     → Ctrl+C (auto-detected)            ║
-║                                                            ║
-║ Modifiers: ^ (Ctrl), + (Shift), ! (Alt), # (Win)           ║
-║ Special: {Enter}, {Esc}, {Tab}, {F1}-{F12}, etc.           ║
-╠════════════════════════════════════════════════════════════╣
-║ EXAMPLES                                                   ║
-╠════════════════════════════════════════════════════════════╣
-║ 960 540 right          → Right-click at center             ║
-║ here left              → Left-click at current pos         ║
-║ type Hello World       → Type text                         ║
-║ press ^v               → Paste (Ctrl+V)                    ║
-║ {Enter}                → Press Enter                       ║
-║ {LWin}                 → Press Windows key (opens Start)   ║
-║ 200 200 drag 800 600   → Drag operation                    ║
-╚════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════╗
+║                   COMMAND REFERENCE                      ║
+╠══════════════════════════════════════════════════════════╣
+║ MOUSE COMMANDS                                           ║
+╠══════════════════════════════════════════════════════════╣
+║ <x> <y> move           → Move cursor to coordinates      ║
+║ <x> <y> left           → Move and left-click             ║
+║ <x> <y> right          → Move and right-click            ║
+║ <x> <y> double         → Move and double-click           ║
+║ <x> <y> middle         → Move and middle-click           ║
+║ <x> <y> scroll_up [n]  → Move and scroll up              ║
+║ <x> <y> scroll_down [n]→ Move and scroll down            ║
+║ <x> <y> drag <x2> <y2> → Drag from (x,y) to (x2,y2)      ║
+║ here <action>          → Action at current position      ║
+╠══════════════════════════════════════════════════════════╣
+║ KEYBOARD COMMANDS                                        ║
+╠══════════════════════════════════════════════════════════╣
+║ type <text>            → Type literal text               ║
+║ press <keys>           → Press keys/shortcuts            ║
+║ {Enter}                → Press Enter (auto-detected)     ║
+║ ^c                     → Ctrl+C (auto-detected)          ║
+║                                                          ║
+║ Modifiers: ^ (Ctrl), + (Shift), ! (Alt), # (Win)         ║
+║ Special: {Enter}, {Esc}, {Tab}, {F1}-{F12}, etc.         ║
+╠══════════════════════════════════════════════════════════╣
+║ EXAMPLES                                                 ║
+╠══════════════════════════════════════════════════════════╣
+║ 960 540 right          → Right-click at center           ║
+║ here left              → Left-click at current pos       ║
+║ type Hello World       → Type text                       ║
+║ press ^v               → Paste (Ctrl+V)                  ║
+║ {Enter}                → Press Enter                     ║
+║ {LWin}                 → Press Windows key (opens Start) ║
+║ 200 200 drag 800 600   → Drag operation                  ║
+╚══════════════════════════════════════════════════════════╝
         """
         print(help_text)
 
 # Show version information
 def show_version():
     """Show version information"""
+    print("=" * 50)
     print(f"Windows Actuation Control v{__version__}")
-    print(f"Platform: {platform.system()} {platform.machine()}")
+    print("=" * 50)
+    print(f"  * OS: {platform.system()} {platform.release()}")
+    print(f"  * Architecture: {platform.machine()}")
+    print("=" * 50)
 
 # Update mechanism
 def update_tool(check_only: bool = False):
@@ -351,7 +356,7 @@ def update_tool(check_only: bool = False):
         latest_tag = latest_release['tag_name']
         
         # Handle 'win-v', 'v', or just number prefixes
-        cleaned_tag = latest_tag.replace('win-', '') # Adjust prefix if you use one like 'win-v1.0'
+        cleaned_tag = latest_tag.replace('win-', '')
         latest_version = cleaned_tag.lstrip('v')
         
         print(f"    Latest version:  v{latest_version}")
@@ -372,7 +377,6 @@ def update_tool(check_only: bool = False):
             return
 
         # Construct filename (Assumes standard Windows asset naming)
-        # e.g., windows-actuation-1.0.0-win-x64.zip
         arch = 'x64' if platform.machine().endswith('64') else 'x86'
         file_name = f"windows-actuation-{latest_version}-win-{arch}.zip"
         
@@ -437,6 +441,52 @@ def update_tool(check_only: bool = False):
     except Exception as e:
         print(f"[✗] Update failed: {e}")
 
+# Uninstallation mechanism
+def uninstall_tool():
+    """Uninstall the tool from the system"""
+    print("=" * 50)
+    print("Windows Actuation Control - Uninstall")
+    print("=" * 50)
+    
+    # 1. Confirm intent
+    confirm = input("\nAre you sure you want to uninstall this tool? [y/N] ").strip().lower()
+    if confirm != 'y':
+        print("[*] Uninstall cancelled.")
+        return
+
+    # 2. Identify the file to remove
+    if getattr(sys, 'frozen', False):
+        target_path = Path(sys.executable).resolve()
+    else:
+        target_path = Path(__file__).resolve()
+
+    print(f"\n[*] Target: {target_path}")
+
+    try:
+        # 3. Perform removal
+        trash_path = target_path.with_suffix('.old_del')
+        
+        # Clean up previous debris if it exists
+        if trash_path.exists():
+            try: trash_path.unlink()
+            except: pass
+        
+        # Rename current executable
+        target_path.rename(trash_path)
+        
+        # Schedule deletion after process exits
+        cmd = f'cmd /c ping 127.0.0.1 -n 3 > nul & del "{trash_path}"'
+        subprocess.Popen(cmd, shell=True)
+        
+        print("[✓] Uninstallation initiated.")
+        print("    The file will be removed automatically in a few seconds.")
+        
+        sys.exit(0)
+
+    except Exception as e:
+        print(f"[✗] Uninstall failed: {e}")
+        print(f"    Please delete '{target_path.name}' manually.")
+
 # Main entry point
 def main():
     """Main entry point"""
@@ -450,6 +500,9 @@ def main():
             check_only = '--check-only' in sys.argv
             update_tool(check_only=check_only)
             sys.exit(0)
+        elif sys.argv[1] == 'uninstall':
+            uninstall_tool()
+            sys.exit(0)
     
     parser = argparse.ArgumentParser(description='Windows VM Control CLI')
     parser.add_argument('-f', '--file', help='Execute commands from file (batch mode)')
@@ -462,9 +515,9 @@ def main():
     
     args = parser.parse_args()
     
-    print("╔════════════════════════════════════════════════════════════╗")
-    print("║         Windows VM Control CLI - CUA Integration           ║")
-    print("╚════════════════════════════════════════════════════════════╝\n")
+    print("╔══════════════════════════════════════════════════════════╗")
+    print("║         Windows VM Control CLI - CUA Integration        ║")
+    print("╚══════════════════════════════════════════════════════════╝\n")
     
     # Get connection details
     host = input("Host (default: localhost): ").strip() or "localhost"
