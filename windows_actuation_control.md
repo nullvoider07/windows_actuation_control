@@ -362,6 +362,11 @@ This automatically detects your OS, downloads the latest binary, and adds it to 
 **Option B: Manual Download**
 If you prefer, download the standalone binary for your OS directly from the [Releases Page](https://github.com/nullvoider07/windows_actuation_control/releases).
 
+**Option C: Uninstall (if needed)**
+```bash
+windows-acutation uninstall
+```
+
 ### Troubleshooting Installation
 
 **If Watchers Don't Start:**
