@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 # Version and Repository Info
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 REPO = "nullvoider07/windows_actuation_control"
 
 class VMController:
