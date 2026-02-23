@@ -35,17 +35,30 @@ if (A_Args.Length < 1) {
 ExecuteCommand(A_Args)
 ExitApp
 
-; --- RESTORED LOGIC ---
+; Write current mouse position to C:\cc_pos.txt so the Rust agent
+; can read it back without spawning a separate AHK process.
+WritePosition() {
+    MouseGetPos(&px, &py)
+    try FileDelete("C:\cc_pos.txt")
+    FileAppend("X=" px "`nY=" py, "C:\cc_pos.txt")
+}
+
 ExecuteCommand(args) {
-    ; 1. Parse Coordinates vs "Here"
+    ; 1. Handle standalone position query
+    if (args[1] = "position") {
+        WritePosition()
+        return
+    }
+
+    ; 2. Parse Coordinates vs "Here"
     if (args[1] = "here") {
-        if (args.Length < 2) 
+        if (args.Length < 2)
             return
-        
+
         action := args[2]
         paramOffset := 3
     } else {
-        if (args.Length < 3) 
+        if (args.Length < 3)
             return
 
         x := args[1]
@@ -53,58 +66,60 @@ ExecuteCommand(args) {
         action := args[3]
         paramOffset := 4
 
-        ; RESTORED: Move and Wait
+        ; Move and Wait
         MouseMove x, y, 0
-        Sleep 200 ; Original stabilization delay
+        Sleep 200
     }
 
-    ; 2. Perform Action (Matching Original Logic)
+    ; 3. Perform Action
     switch action {
         case "move":
             ; Just move (already done above)
-        
+
         case "left":
             Click "Left"
-        
+
         case "right":
-            Send "{RButton}" ; Restored: Original Send syntax
-        
+            Send "{RButton}"
+
         case "middle":
             Click "Middle"
-        
+
         case "double":
             Click "Left", 2
-        
+
         case "hold":
             Click "Down"
-        
+
         case "release":
             Click "Up"
-        
+
         case "scroll_up":
             amount := (args.Length >= paramOffset) ? args[paramOffset] : 3
             Click "WheelUp", amount
-        
+
         case "scroll_down":
             amount := (args.Length >= paramOffset) ? args[paramOffset] : 3
             Click "WheelDown", amount
-        
+
         case "drag":
             if (args.Length < paramOffset + 1)
                 return
             dest_x := args[paramOffset]
             dest_y := args[paramOffset+1]
-            
-            ; Restored: Original Drag Logic (Click functions + Speed 50 + Sleeps)
+
             Click "Down"
             Sleep 100
-            MouseMove dest_x, dest_y, 50 ; Speed 50 (Slow/Smooth drag)
+            MouseMove dest_x, dest_y, 50
             Sleep 100
             Click "Up"
-            
+
         default:
             ; Unknown action
     }
-    
-    Sleep 100 ; Restored: Final safety sleep
+
+    Sleep 100
+
+    ; 4. Always write position after every action so Rust can read it back
+    WritePosition()
 }
