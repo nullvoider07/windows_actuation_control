@@ -7,6 +7,7 @@ CoordMode "Mouse", "Screen"
 
 ; --- MODE 1: WATCHER SERVICE ---
 if (A_Args.Length > 0 and A_Args[1] = "watcher") {
+    SetTimer(TrackPosition, 10)
     Loop {
         if FileExist("C:\mouse_cmd.txt") {
             try {
@@ -26,6 +27,12 @@ if (A_Args.Length > 0 and A_Args[1] = "watcher") {
     ExitApp
 }
 
+TrackPosition() {
+    MouseGetPos(&x, &y)
+    RegWrite(x, "REG_SZ", "HKCU\Software\MouseTracker", "MouseX")
+    RegWrite(y, "REG_SZ", "HKCU\Software\MouseTracker", "MouseY")
+}
+
 ; --- MODE 2: ONE-SHOT CLI ---
 if (A_Args.Length < 1) {
     MsgBox "Usage: mouse_control.ahk <x> <y> <action> OR mouse_control.ahk watcher"
@@ -35,18 +42,9 @@ if (A_Args.Length < 1) {
 ExecuteCommand(A_Args)
 ExitApp
 
-; Write current mouse position to C:\cc_pos.txt so the Rust agent
-; can read it back without spawning a separate AHK process.
-WritePosition() {
-    MouseGetPos(&px, &py)
-    try FileDelete("C:\cc_pos.txt")
-    FileAppend("X=" px "`nY=" py, "C:\cc_pos.txt")
-}
-
 ExecuteCommand(args) {
     ; 1. Handle standalone position query
     if (args[1] = "position") {
-        WritePosition()
         return
     }
 
@@ -119,7 +117,4 @@ ExecuteCommand(args) {
     }
 
     Sleep 100
-
-    ; 4. Always write position after every action so Rust can read it back
-    WritePosition()
 }
